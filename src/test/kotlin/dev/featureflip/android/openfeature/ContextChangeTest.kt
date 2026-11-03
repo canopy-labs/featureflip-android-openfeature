@@ -16,9 +16,9 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.atomic.AtomicInteger
 
 class ContextChangeTest {
     private lateinit var server: FakeEvalServer
@@ -37,10 +37,7 @@ class ContextChangeTest {
     }
 
     /** One string flag `who` naming the user the flags were evaluated for. */
-    private fun whoFlags(user: String, settled: Boolean = false): String {
-        val marker = if (settled) ""","settled":{"value":true,"variation":"v","reason":"fallthrough"}""" else ""
-        return """{"who":{"value":"$user","variation":"v","reason":"fallthrough"}$marker}"""
-    }
+    private fun whoFlags(user: String) = """{"who":{"value":"$user","variation":"v","reason":"fallthrough"}}"""
 
     private fun who(provider: FeatureflipProvider) = provider.getStringEvaluation("who", "default", null).value
 
@@ -51,32 +48,27 @@ class ContextChangeTest {
         withTimeout(10_000) { while (server.requestsTo(path).size < n) delay(20) }
 
     /**
-     * Makes reads after an identify deterministic. The SDK polls once as soon as it
-     * initializes, and a poll in flight across an identify is applied when it lands,
-     * whichever user it was for. So the first poll answers a `settled` marker, and
-     * every identify is held at the server until the provider serves that marker,
-     * which orders the poll's flags before the identify's. Identify answers name the
-     * user they were sent for.
+     * Identify answers name the user they were sent for, and so does a later poll for a
+     * user an identify succeeded for. Everything else answers `init`. A response for the
+     * previous user that lands after an identify is the SDK's to drop (3.5.1), so the
+     * tests need no ordering of their own.
      */
-    private fun settleBeforeIdentify(provider: FeatureflipProvider) {
-        server.evaluateFlags = whoFlags("init")
-        val evaluates = AtomicInteger()
-        server.onEvaluate = { if (evaluates.incrementAndGet() >= 2) server.evaluateFlags = whoFlags("init", settled = true) }
-        server.onIdentify = {
-            runBlocking {
-                withTimeout(10_000) {
-                    while (!provider.getBooleanEvaluation("settled", false, null).value) delay(10)
-                }
-            }
+    private fun answerByUser() {
+        val identified = ConcurrentHashMap.newKeySet<String>()
+        server.identifyResponder = { context ->
+            val user = context["user_id"].toString()
+            identified.add(user)
+            whoFlags(user)
         }
-        // Identify answers keep the marker, so a later identify is not held forever.
-        server.identifyResponder = { context -> whoFlags(context["user_id"].toString(), settled = true) }
+        server.evaluateResponder = { context ->
+            whoFlags(context["user_id"]?.toString()?.takeIf { it in identified } ?: "init")
+        }
     }
 
     @Test
     fun `onContextSet identifies the merged context`() = runBlocking<Unit> {
         val provider = FeatureflipProvider(server.config(key, context = mapOf("app" to "x")))
-        settleBeforeIdentify(provider)
+        answerByUser()
         provider.initialize(null)
 
         provider.onContextSet(null, ImmutableContext("u2"))
@@ -92,7 +84,7 @@ class ContextChangeTest {
     fun `an unchanged context makes no request`() = runBlocking<Unit> {
         // setProviderAndWait(ctx) followed by setEvaluationContext(ctx).
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         val ctx = ImmutableContext("u1")
         provider.initialize(ctx)
 
@@ -105,7 +97,7 @@ class ContextChangeTest {
     @Test
     fun `a failed identify throws GeneralError and keeps serving the old flags`() = runBlocking<Unit> {
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         server.identifyStatus = 500
         provider.initialize(null)
 
@@ -122,9 +114,9 @@ class ContextChangeTest {
     fun `identify runs off the calling thread`() = runBlocking<Unit> {
         val client = FeatureflipClient.get(server.config(key))
         val provider = FeatureflipProvider(client)
-        settleBeforeIdentify(provider)
+        answerByUser()
         provider.initialize(null)
-        // Only the identify changes `who`; the first poll changes `settled` alone.
+        // Only the identify changes `who`.
         val threads = CopyOnWriteArrayList<String>()
         client.onUpdate { keys -> if ("who" in keys) threads.add(Thread.currentThread().name) }
 
@@ -140,7 +132,7 @@ class ContextChangeTest {
     @Test
     fun `two overlapping context sets land on the later one`() = runBlocking<Unit> {
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         provider.initialize(null)
         val gate = CountDownLatch(1)
         server.identifyGate = gate
@@ -163,7 +155,7 @@ class ContextChangeTest {
     @Test
     fun `a superseded context set does not fetch`() = runBlocking<Unit> {
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         provider.initialize(null)
         val gate = CountDownLatch(1)
         server.identifyGate = gate
@@ -189,7 +181,7 @@ class ContextChangeTest {
     @Test
     fun `a cancelled context set releases the lock and records what landed`() = runBlocking<Unit> {
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         provider.initialize(null)
         val gate = CountDownLatch(1)
         server.identifyGate = gate
@@ -216,7 +208,7 @@ class ContextChangeTest {
     @Test
     fun `a context set during initialize waits for it and lands`() = runBlocking<Unit> {
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         val gate = CountDownLatch(1)
         server.evaluateGate = gate
 
@@ -241,7 +233,7 @@ class ContextChangeTest {
         // setEvaluationContextAndWait runs in the caller's scope, so B can be cancelled
         // with nothing newer to follow, after the SDK has already committed u2.
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         provider.initialize(null)
         val gate = CountDownLatch(1)
         server.identifyGate = gate
@@ -269,7 +261,7 @@ class ContextChangeTest {
         // The client path identifies a non-empty initial context, so this initialize
         // would identify u1 if no set arrived.
         val provider = FeatureflipProvider(FeatureflipClient.get(server.config(key)))
-        settleBeforeIdentify(provider)
+        answerByUser()
         val gate = CountDownLatch(1)
         server.evaluateGate = gate
 
@@ -293,7 +285,7 @@ class ContextChangeTest {
     @Test
     fun `a context set cancelled during initialize's own identify still lands`() = runBlocking<Unit> {
         val provider = FeatureflipProvider(FeatureflipClient.get(server.config(key)))
-        settleBeforeIdentify(provider)
+        answerByUser()
         val gate = CountDownLatch(1)
         server.identifyGate = gate
 
@@ -319,7 +311,7 @@ class ContextChangeTest {
     fun `a context set whose holder and successor are both cancelled still lands the newest`() = runBlocking<Unit> {
         // Both callers in one lifecycle scope, torn down together while A's identify is out.
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         provider.initialize(null)
         val gate = CountDownLatch(1)
         server.identifyGate = gate
@@ -346,7 +338,7 @@ class ContextChangeTest {
     @Test
     fun `an uncontended context set cancelled before its identify still lands`() = runBlocking<Unit> {
         val provider = FeatureflipProvider(server.config(key))
-        settleBeforeIdentify(provider)
+        answerByUser()
         provider.initialize(null)
 
         // ATOMIC: the body runs even though the job is cancelled before it starts, so the

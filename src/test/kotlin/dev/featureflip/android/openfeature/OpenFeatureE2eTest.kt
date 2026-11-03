@@ -13,7 +13,6 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -22,7 +21,6 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The provider driven through a real, isolated OpenFeature Kotlin SDK instance, over
@@ -50,27 +48,13 @@ class OpenFeatureE2eTest {
     private fun flag(value: Boolean, variation: String, reason: String) =
         """{"value":$value,"variation":"$variation","reason":"$reason"}"""
 
-    private val settledFlag = """"settled":${flag(true, "v", "fallthrough")}"""
-
-    /**
-     * Orders the SDK's first poll before any identify (#4886): the poll answers a
-     * `settled` marker, and every identify is held until the provider serves it.
-     * Identifies answer [identifyA] with the marker kept, so a later identify is not held.
-     */
-    private fun settleBeforeIdentify(initialA: String, identifyA: String) {
-        server.evaluateFlags = "{\"a\":$initialA}"
-        val evaluates = AtomicInteger()
-        server.onEvaluate = {
-            if (evaluates.incrementAndGet() >= 2) server.evaluateFlags = "{\"a\":$initialA,$settledFlag}"
+    /** Answers `user-2`'s requests with [identifyA] and everyone else's with [initialA]. */
+    private fun answerByUser(initialA: String, identifyA: String) {
+        val responder = { context: Map<String, Any?> ->
+            "{\"a\":${if (context["user_id"] == "user-2") identifyA else initialA}}"
         }
-        server.identifyFlags = "{\"a\":$identifyA,$settledFlag}"
-        server.onIdentify = {
-            runBlocking {
-                withTimeout(10_000) {
-                    while (!api.getClient().getBooleanValue("settled", false)) delay(10)
-                }
-            }
-        }
+        server.evaluateResponder = responder
+        server.identifyResponder = responder
     }
 
     @Test
@@ -89,7 +73,7 @@ class OpenFeatureE2eTest {
 
     @Test
     fun `setEvaluationContextAndWait re-targets`() = runBlocking<Unit> {
-        settleBeforeIdentify(
+        answerByUser(
             initialA = flag(true, "on", "fallthrough"),
             identifyA = flag(false, "off", "fallthrough"),
         )

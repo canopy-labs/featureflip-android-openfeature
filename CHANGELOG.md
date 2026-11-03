@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 — 2026-11-03
+
+### Changed
+
+- Requires the Featureflip Android SDK 3.5.1 or later. On 3.5.0, a poll or stream update still in flight for the previous user when a new evaluation context was set could replace the new user's flags with the old user's until the next poll. 3.5.1 drops those responses. (#4937)
+
 ## 0.1.0 — 2026-11-03
 
 Initial release. (#4883)

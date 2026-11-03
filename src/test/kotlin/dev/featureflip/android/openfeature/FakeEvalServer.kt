@@ -35,6 +35,9 @@ internal class FakeEvalServer : AutoCloseable {
     /** Runs on the dispatcher thread at the start of every identify request. */
     @Volatile var onIdentify: (() -> Unit)? = null
 
+    /** When set, answers each evaluate from its request context instead of [evaluateFlags]. */
+    @Volatile var evaluateResponder: ((Map<String, Any?>) -> String)? = null
+
     /** When set, answers each identify from its request context instead of [identifyFlags]. */
     @Volatile var identifyResponder: ((Map<String, Any?>) -> String)? = null
 
@@ -46,7 +49,8 @@ internal class FakeEvalServer : AutoCloseable {
                     "/v1/client/evaluate" -> {
                         onEvaluate?.invoke()
                         await(evaluateGate)
-                        ok("""{"flags":$evaluateFlags}""")
+                        val flags = evaluateResponder?.invoke(contextOf(request)) ?: evaluateFlags
+                        ok("""{"flags":$flags}""")
                     }
                     "/v1/client/identify" -> {
                         onIdentify?.invoke()
