@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-11-03
+
+### Changed
+
+- Requires the Featureflip Android SDK 3.5.4 or later. Before 3.5.4, a stream connect still being opened when the provider shut down could open its connection anyway and hold it open on the server until it timed out (#4947). A late `connection-ready` from a replaced connection could also leave the SDK pointing `setEvaluationContext` at a closed connection (#4946). 3.5.3 also keeps the on-disk flag cache in step with the flags being served, so a cold start no longer serves older flags (#4945).
+
 ## 0.1.1 — 2026-11-03
 
 ### Changed

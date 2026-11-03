@@ -8,7 +8,7 @@
 
 ```kotlin
 dependencies {
-    implementation("io.featureflip:featureflip-android-openfeature:0.1.1")
+    implementation("io.featureflip:featureflip-android-openfeature:0.1.2")
 }
 ```
 
@@ -16,7 +16,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'io.featureflip:featureflip-android-openfeature:0.1.1'
+    implementation 'io.featureflip:featureflip-android-openfeature:0.1.2'
 }
 ```
 
@@ -174,7 +174,7 @@ A failed initial flag load does not fail initialization. The SDK keeps retrying 
 
 ## Requirements
 
-Java 17 or higher, the Featureflip Android SDK 3.5.1 or later, and the OpenFeature Kotlin SDK 0.9.0.
+Java 17 or higher, the Featureflip Android SDK 3.5.4 or later, and the OpenFeature Kotlin SDK 0.9.0.
 
 ## License
 
