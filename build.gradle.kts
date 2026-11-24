@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "io.featureflip"
-version = "0.1.2"
+version = "0.1.3"
 
 java {
     toolchain {
@@ -29,7 +29,7 @@ dependencies {
     // 0.9.0 is the floor because `getLongEvaluation` and `Value.Long` first exist in
     // 0.9.0. The 0.6.2-0.8.0 `FeatureProvider` lacks them.
     api("dev.openfeature:kotlin-sdk:0.9.0")
-    api("io.featureflip:featureflip-android:3.5.4")
+    api("io.featureflip:featureflip-android:3.5.5")
     // kotlin-sdk 0.9.0 publishes `kotlinx-coroutines-core` as runtime-only in its
     // `jvmApiElements` variant. The provider's public `observe(): Flow` needs it at
     // compile time, hence its own `api` line.
@@ -40,7 +40,7 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver3-junit5:5.5.1")
     testImplementation("org.assertj:assertj-core:3.27.7")
     // The tests parse request and event bodies the way the SDK writes them.
-    testImplementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.22.4")
+    testImplementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.23.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 

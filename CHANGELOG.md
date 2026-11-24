@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 — 2026-11-24
+
+### Security
+
+- Requires the Featureflip Android SDK 3.5.5 or later. That release redacts the SDK key from every line the SDK writes to `System.err`, including error messages from the HTTP stack, and from the `IOException` a failed request throws, so a `Call.Factory` or interceptor whose exception quotes the `Authorization` header no longer hands the key to the host's logs and crash reporters. (#5167)
+
 ## 0.1.2 — 2026-11-03
 
 ### Changed
